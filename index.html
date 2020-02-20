@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>汽车零部件展示</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="main.css">
+	</head>
+
+	<body>
+		<div id="info">
+			<!-- <a href="http://threejs.org" target="_blank" rel="noopener">three.js</a> - GLTFLoader<br /> -->
+			<h2>汽车零部件展示</h2>
+			<!-- <a href="https://sketchfab.com/theblueturtle_" target="_blank" rel="noopener">theblueturtle_</a><br />
+			<a href="https://hdrihaven.com/hdri/?h=royal_esplanade" target="_blank" rel="noopener">Royal Esplanade</a> by <a href="https://hdrihaven.com/" target="_blank" rel="noopener">HDRI Haven</a>
+
+			<!-- <button id = "toggleAnimation"> TOGGLE </button> -->
+				<!-- <button id = "play1"> play1 </button>
+					<button id = "reverse"> reverse </button>
+						<button id = "froseReverse"> froseReverse </button> -->
+		</div>
+
+		<script type="module">
+
+			import * as THREE from '/build/three.module.js';
+
+			import Stats from '/libs/stats.module.js';
+
+
+			import { GLTFLoader } from '/libs/GLTFLoader.js';
+			import { RGBELoader } from '/libs/RGBELoader.js';
+			import { RoughnessMipmapper } from '/libs/RoughnessMipmapper.js';
+			import { OrbitControls } from '/libs/OrbitControls.js';
+
+			var container, stats, controls;
+			var camera, scene, renderer, raycaster;
+			var mixer = null;
+			var toggleState = true;
+
+			//at mouse event
+			var mouse = new THREE.Vector2(), INTERSECTED;
+			var radius = 2000, theta = 0;
+
+			//car explode state
+			var isExploded = false;
+
+			//app logic level
+			//level 1:explode/merge car animation
+			//level 2:show detail and hide rest
+			var isLevel1 = true;
+			var isLevel2 = false;
+
+			//level2:object hide state
+			var isHided = false;
+
+			//rigist events
+			var explodeCarEvent = new Event('explodeCar');
+			var mergeCarEvent = new Event('mergeCar');
+
+			//bone group for display part in detail
+											//0 carbody  1leftdoor 2righdoor 3bumper  4wheel          5wheel       6  wheel      7wheel      8light        9rearbumper
+			var boneGroup = ["Body", "leftDoor", "rightDoor", "frontBumper", "leftFrontWheel", "rightFrontWheel", "leftRearWheel","rightRearWheel", "rearLight", "rearBumper"];
+
+			//at raycaster
+			raycaster = new THREE.Raycaster();
+
+				var clock = new THREE.Clock();
+
+			init();
+			animate();
+
+			function init() {
+
+				container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 1500);
+				// camera.position.set( - 1.8, 0.6, 2.7 );
+					camera.position.set(  1300	, 150 , 0 );
+
+				scene = new THREE.Scene();
+
+				new RGBELoader()
+					.setDataType( THREE.UnsignedByteType )
+					.setPath( './textures/' )
+					.load( 'venice_sunset_1k.hdr', function ( texture ) {
+
+						var envMap = pmremGenerator.fromEquirectangular( texture ).texture;
+						pmremGenerator.dispose();
+						var color = new THREE.Color('skyblue')
+						scene.background = color;
+						// scene.background = envMap;
+						scene.environment = envMap;
+
+						// model
+
+						var roughnessMipmapper = new RoughnessMipmapper( renderer );
+
+						var loader = new GLTFLoader().setPath( './models/' );
+						loader.load( 'i8_animated.glb', function ( gltf ) {
+
+							gltf.scene.traverse( function ( child ) {
+
+								if ( child.isMesh ) {
+
+									roughnessMipmapper.generateMipmaps( child.material );
+
+								}
+								// console.log(gltf.scene);
+
+								mixer = new THREE.AnimationMixer(gltf.scene);
+								var AnimationAction = mixer.clipAction(gltf.animations[0]);
+								// document.getElementById('toggleAnimation').onclick =  function(){
+								// 	if(toggleState){
+								// 		AnimationAction.paused = true;
+								// 	}else{
+								// 		AnimationAction.paused = false;
+								// 	}
+								// 	toggleState = !toggleState;
+								// }
+
+								//play animation by button
+								// document.getElementById('play1').onclick = function(){
+								// 	AnimationAction.reset();
+								// 	AnimationAction.timeScale = 1;
+								// 	AnimationAction.setLoop(THREE.LoopOnce);
+								// 	AnimationAction.clampWhenFinished = true;
+								// 	AnimationAction.play();
+								// }
+								// document.getElementById('reverse').onclick = function(){
+								// 	AnimationAction.paused = false;
+								// 	AnimationAction.timeScale = -1;
+								// 	AnimationAction.setLoop(THREE.LoopOnce);
+								// 	AnimationAction.play();
+								// }
+								// document.getElementById('froseReverse').onclick = function(){
+								//
+								// 	if(AnimationAction.time === 0) {
+							  //       AnimationAction.time = AnimationAction.getClip().duration;
+							  //   }
+								// 	AnimationAction.paused = false;
+								//
+								// 	AnimationAction.setLoop(THREE.LoopOnce);
+								// 		AnimationAction.timeScale = -1;
+								// 	AnimationAction.play();
+								// }
+
+								//play animation by event
+								document.addEventListener( "explodeCar", function(){
+									AnimationAction.reset();
+									AnimationAction.timeScale = 1;
+									AnimationAction.setLoop(THREE.LoopOnce);
+									AnimationAction.clampWhenFinished = true;
+									AnimationAction.play();
+								})
+
+								document.addEventListener('mergeCar',function(){
+
+									if(AnimationAction.time === 0) {
+											AnimationAction.time = AnimationAction.getClip().duration;
+									}
+									AnimationAction.paused = false;
+
+									AnimationAction.setLoop(THREE.LoopOnce);
+										AnimationAction.timeScale = -1;
+									AnimationAction.play();
+								})
+
+								// AnimationAction.play();
+
+
+
+							} );
+
+							scene.add( gltf.scene );
+							console.log(gltf.animations);
+										console.log(scene.children);
+							roughnessMipmapper.dispose();
+
+
+
+							document.addEventListener('mousedown', onDocumentMouseMove, false);
+							document.addEventListener('touchstart', onDocumentMouseMove, false);
+
+						} );
+
+					} );
+
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.toneMapping = THREE.ACESFilmicToneMapping;
+				renderer.outputEncoding = THREE.sRGBEncoding;
+				container.appendChild( renderer.domElement );
+
+				var pmremGenerator = new THREE.PMREMGenerator( renderer );
+				pmremGenerator.compileEquirectangularShader();
+
+				controls = new OrbitControls( camera, renderer.domElement );
+				controls.target.set( 0, 0, - 0.2 );
+				controls.update();
+
+				window.addEventListener( 'resize', onWindowResize, false );
+				//binding button
+
+
+				// stats
+				stats = new Stats();
+				container.appendChild( stats.dom );
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			//
+
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+
+
+				render();
+				stats.update();
+				if(mixer!=null){
+					mixer.update(clock.getDelta());
+				}
+			}
+
+			function render(){
+				//raycast mousedown
+
+						renderer.render( scene, camera );
+			}
+
+			function onDocumentMouseMove(event){
+				// event.preventDefault();
+				// console.log(event)
+				if(event.touchs = 'TouchList'){
+					mouse.x = (event.touches[0].clientX/window.innerWidth)*2 - 1;
+					mouse.y = -(event.touches[0].clientY/window.innerHeight)*2 + 1;
+				}else{
+				mouse.x = (event.clientX/window.innerWidth)*2 - 1;
+				mouse.y = -(event.clientY/window.innerHeight)*2 + 1;
+			}
+				console.log('x:'+mouse.x+'  y:' +mouse.y);
+
+				raycaster.setFromCamera( mouse, camera );
+					var intersects = raycaster.intersectObjects(scene.children,true);
+					console.log(intersects);
+				if(intersects.length>0 ){
+
+				if(isLevel1){
+					if(intersects[0].object.parent.parent.parent.name == "Armature" || intersects[0].object.parent.parent.parent.name == "Bone" || intersects[0].object.parent.parent.name == "Armature"){
+							// console.log(intersects);
+							if(!isExploded ){
+								document.dispatchEvent(explodeCarEvent);
+								isLevel1 = false;
+								isExploded = true;
+								isLevel2 = true;
+							}else{
+									document.dispatchEvent(mergeCarEvent);
+									isLevel1 = true;
+									isExploded = false;
+									isLevel2 = false;
+									}
+								}
+							}
+							//hide object show details
+							//0 carbody  1leftdoor 2righdoor 3bumper  4wheel          5wheel       6  wheel      7wheel      8light        9rearbumper
+					 if(isLevel2){
+						 		if(!isHided){
+													if(intersects[0].object.parent.name == "frontBumper"){
+														console.log('front bumper')
+														 hideRestConponent(boneGroup[3]);
+														 isHided = true;
+													}
+													// else if( intersects[0].object.parent.name == "Body"){
+													// 	console.log(' car body')
+													// 	 hideRestConponent(boneGroup[0]);
+													// 	 isHided = true;
+													// }
+													else if( intersects[0].object.parent.name == "leftFrontWheel" ){
+														console.log('wheel')
+														 hideRestConponent(boneGroup[4]);
+														  isHided = true;
+													}else if( intersects[0].object.parent.name == "rightFrontWheel" ){
+														console.log('wheel')
+														 hideRestConponent(boneGroup[4]);
+														  isHided = true;
+													}else if( intersects[0].object.parent.name == "leftRearWheel" ){
+														console.log('wheel')
+														 hideRestConponent(boneGroup[4]);
+														  isHided = true;
+													}else if( intersects[0].object.parent.name == "leftRearWheel" ){
+														console.log('wheel')
+														 hideRestConponent(boneGroup[4]);
+														  isHided = true;
+													}else if(intersects[0].object.parent.name == "rightDoor"){
+														console.log('rightDoor')
+														 hideRestConponent(boneGroup[2]);
+														  isHided = true;
+													}else if(intersects[0].object.parent.name == "leftDoor"){
+															console.log('leftDoor')
+															 hideRestConponent(boneGroup[1]);
+															  isHided = true;
+													}else if(intersects[0].object.parent.name == "rearLight"){
+														console.log('rearPart')
+														 hideRestConponent(boneGroup[8]);
+														  isHided = true;
+													}else if(intersects[0].object.parent.name == "rearBumper"){
+														console.log('rearbumper')
+														 hideRestConponent(boneGroup[9]);
+														  isHided = true;}
+
+					 }else{
+					 showAllConponent();
+					 isLevel2 = false;
+					 isLevel1 = true;
+					 isHided = false;
+				 }
+
+		}
+	}
+	}
+
+					function hideRestConponent(object){
+						 var newBone = ["Body", "leftDoor", "rightDoor", "frontBumper", "leftFrontWheel", "rightFrontWheel", "leftRearWheel","rightRearWheel", "rearLight", "rearBumper"];
+						 var numBone = newBone.indexOf(object);
+						newBone.splice(numBone, 1);
+						console.log(newBone);
+						scene.traverse(function(listObject){
+							console.log(' checking object:  ' + listObject.name);
+							newBone.forEach(function(listArray){
+								// console.log('matching' + listArray);
+									if(listObject.name == listArray ){
+
+										listObject.visible = false;
+										console.log('deleted: ' + listArray);
+								}
+							})
+
+						})
+						}
+
+
+						function showAllConponent(){
+							scene.traverse(function(object){
+								object.visible = true;
+							})
+						}
+
+
+
+
+		</script>
+
+	</body>
+</html>
